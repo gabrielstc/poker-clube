@@ -1,0 +1,32 @@
+model Player {
+  id           String        @id @default(uuid())
+  name         String        @unique
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  date        DateTime
+  type        TransactionType
+  value       Float
+  description String?
+  reconciled  Boolean  @default(false)
+  playerId    String
+  player      Player   @relation(fields: [playerId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum TransactionType {
+  ENTRADA
+  SAIDA
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}

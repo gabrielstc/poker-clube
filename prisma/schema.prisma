@@ -2,6 +2,7 @@ model Player {
   id           String        @id @default(uuid())
   name         String        @unique
   transactions Transaction[]
+  tournamentPlayers TournamentPlayer[]
 }
 
 model Transaction {
@@ -29,4 +30,30 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
+}
+
+model Tournament {
+  id        String             @id @default(uuid())
+  name      String
+  date      DateTime
+  players   TournamentPlayer[]
+  createdAt DateTime           @default(now())
+}
+
+model TournamentPlayer {
+  id           String     @id @default(uuid())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id])
+  tournamentId String
+  player       Player     @relation(fields: [playerId], references: [id])
+  playerId     String
+  placement    Int?       // Colocação no torneio (1 = campeão, etc)
+  rebuys       Int        @default(0)
+  points       Float      @default(0)
+}
+
+model User {
+  id       Int    @id @default(autoincrement())
+  email    String @unique
+  password String
+  name     String
 }

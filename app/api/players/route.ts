@@ -4,35 +4,38 @@ import { prisma } from "@/lib/prisma"
 export async function GET() {
   try {
     const players = await prisma.player.findMany({
-      orderBy: { name: "asc" }
+      orderBy: { name: "asc" }, // ordena por nome
+      select: {
+        id: true,
+        name: true,
+      },
     })
+
     return NextResponse.json(players)
   } catch (error) {
-    return NextResponse.json({ error: "Erro ao listar jogadores" }, { status: 500 })
+    console.error(error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const data = await req.json()
-    const { name } = data
+    const body = await request.json()
+    const { name } = body
 
-    if (!name || typeof name !== "string" || name.trim() === "") {
+    if (!name || typeof name !== "string") {
       return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 })
     }
 
-    // Verifica se já existe player com mesmo nome
-    const existing = await prisma.player.findFirst({ where: { name } })
-    if (existing) {
-      return NextResponse.json({ error: "Jogador já existe" }, { status: 409 })
-    }
-
-    const player = await prisma.player.create({
-      data: { name }
+    // Cria player no banco
+    const newPlayer = await prisma.player.create({
+      data: { name },
     })
 
-    return NextResponse.json(player, { status: 201 })
+    return NextResponse.json(newPlayer)
   } catch (error) {
-    return NextResponse.json({ error: "Erro ao criar jogador" }, { status: 500 })
+    console.error(error)
+    // Pode ser erro de duplicata, etc
+    return NextResponse.json({ error: "Erro interno ao criar jogador" }, { status: 500 })
   }
 }

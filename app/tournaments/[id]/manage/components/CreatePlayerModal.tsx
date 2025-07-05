@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -17,8 +17,19 @@ type CreatePlayerModalProps = {
   loading: boolean
 }
 
-export function CreatePlayerModal({ open, onOpenChange, onCreate, loading }: CreatePlayerModalProps) {
+export function CreatePlayerModal({
+  open,
+  onOpenChange,
+  onCreate,
+  loading,
+}: CreatePlayerModalProps) {
   const [newPlayerName, setNewPlayerName] = useState("")
+
+  useEffect(() => {
+    if (!open) {
+      setNewPlayerName("") // limpa o campo ao fechar
+    }
+  }, [open])
 
   function handleSubmit() {
     if (!newPlayerName.trim()) {
@@ -26,7 +37,6 @@ export function CreatePlayerModal({ open, onOpenChange, onCreate, loading }: Cre
       return
     }
     onCreate(newPlayerName.trim())
-    setNewPlayerName("")
   }
 
   return (
@@ -35,30 +45,30 @@ export function CreatePlayerModal({ open, onOpenChange, onCreate, loading }: Cre
         <DialogHeader>
           <DialogTitle>Criar novo jogador</DialogTitle>
         </DialogHeader>
+
         <div className="mt-4 space-y-4">
           <Input
             placeholder="Nome do jogador"
             value={newPlayerName}
-            onChange={e => setNewPlayerName(e.target.value)}
+            onChange={(e) => setNewPlayerName(e.target.value)}
             disabled={loading}
-            onKeyDown={e => {
+            onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault()
                 handleSubmit()
               }
             }}
           />
+
           <div className="flex justify-end gap-2">
             <Button
               variant="outline"
-              onClick={() => {
-                onOpenChange(false)
-                setNewPlayerName("")
-              }}
+              onClick={() => onOpenChange(false)}
               disabled={loading}
             >
               Cancelar
             </Button>
+
             <Button onClick={handleSubmit} disabled={loading}>
               {loading ? "Salvando..." : "Salvar"}
             </Button>

@@ -1,133 +1,86 @@
+import { PrismaClient } from "@prisma/client"
 import { NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
 
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  const { id } = params
+const prisma = new PrismaClient()
 
-  const tournament = await prisma.tournament.findUnique({
-    where: { id },
-    include: {
-      players: {
-        include: { player: true },
-        orderBy: { placement: "asc" },
+export const GET = async (
+  req: Request,
+  context: { params: { id: string } }
+) => {
+  const tournamentId = context.params.id;
+
+  try {
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      include: {
+        players: {
+          include: { player: true },
+          orderBy: { placement: "asc" },
+        },
       },
-    },
-  })
+    });
 
-  if (!tournament) {
-    return NextResponse.json({ error: "Torneio não encontrado" }, { status: 404 })
+    if (!tournament) {
+      return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+    }
+
+    const players = tournament.players.map(tp => ({
+      playerId: tp.playerId,
+      position: tp.placement ?? 0,
+      player: {
+        id: tp.player.id,
+        name: tp.player.name,
+      },
+      rebuys: tp.rebuys,
+      points: tp.points,
+    }));
+
+    return NextResponse.json({
+      id: tournament.id,
+      name: tournament.name,
+      date: tournament.date,
+      players,
+    });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
+};
 
-  return NextResponse.json(tournament)
-}
 
 export async function POST(
-  request: Request,
+  req: Request,
   { params }: { params: { id: string } }
 ) {
-  const { id: tournamentId } = params
-  const { name } = await request.json()
+  const tournamentId = params.id
+  const body = await req.json()
+  const { playerId, position } = body
 
-  if (!name || typeof name !== "string") {
+  if (!playerId || !position) {
     return NextResponse.json(
-      { error: "Nome do jogador é obrigatório" },
+      { error: "playerId e position são obrigatórios" },
       { status: 400 }
     )
   }
 
   try {
-    // Upsert do jogador (garante existência com uma query só)
-    const player = await prisma.player.upsert({
-      where: { name },
-      update: {},
-      create: { name },
-    })
-
-    // Verifica se já está no torneio
-    const existing = await prisma.tournamentPlayer.findFirst({
-      where: { tournamentId, playerId: player.id },
-    })
-
-    if (existing) {
-      return NextResponse.json(
-        { error: "Jogador já está no torneio" },
-        { status: 400 }
-      )
-    }
-
-    // Conta participantes e define placement
-    const count = await prisma.tournamentPlayer.count({
-      where: { tournamentId },
-    })
-
-    // Cria como último eliminado
     const tournamentPlayer = await prisma.tournamentPlayer.create({
       data: {
         tournamentId,
-        playerId: player.id,
-        placement: count + 1,
+        playerId,
+        placement: position, // você pode ajustar o nome do campo se necessário
       },
-      include: { player: true },
+      include: {
+        player: true,
+      },
     })
 
-    return NextResponse.json(tournamentPlayer, { status: 201 })
+    return NextResponse.json(tournamentPlayer)
   } catch (error) {
-    console.error("[ADD_PLAYER]", error)
+    console.error("Erro ao adicionar jogador:", error)
     return NextResponse.json(
-      { error: "Erro ao adicionar jogador" },
+      { error: "Erro ao adicionar jogador ao torneio" },
       { status: 500 }
     )
   }
-}
-
-export async function PUT(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  const { id } = params
-  const { playerId } = await request.json()
-
-  if (!playerId || typeof playerId !== "string") {
-    return NextResponse.json(
-      { error: "playerId é obrigatório" },
-      { status: 400 }
-    )
-  }
-
-  // Busca os players do torneio para calcular colocação
-  const tournamentPlayers = await prisma.tournamentPlayer.findMany({
-    where: { tournamentId: id },
-    orderBy: { placement: "asc" },
-  })
-
-  const tp = tournamentPlayers.find((tp) => tp.playerId === playerId)
-
-  if (!tp) {
-    return NextResponse.json(
-      { error: "Jogador não está no torneio" },
-      { status: 404 }
-    )
-  }
-
-  if (tp.placement !== null) {
-    return NextResponse.json(
-      { error: "Jogador já eliminado" },
-      { status: 400 }
-    )
-  }
-
-  const eliminatedCount = tournamentPlayers.filter((tp) => tp.placement !== null)
-    .length
-  const totalPlayers = tournamentPlayers.length
-  const placement = totalPlayers - eliminatedCount
-
-  const updated = await prisma.tournamentPlayer.update({
-    where: { id: tp.id },
-    data: { placement },
-  })
-
-  return NextResponse.json(updated)
 }

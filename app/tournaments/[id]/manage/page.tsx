@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useParams } from "next/navigation"
 import { PlayerTable } from "./components/PlayerTable"
 import { SelectPlayerModal } from "./components/SelectPlayerModal"
 import { CreatePlayerModal } from "./components/CreatePlayerModal"
@@ -18,64 +19,151 @@ type TournamentPlayer = {
 }
 
 export default function ManageTournamentPage() {
-  const [players, setPlayers] = useState<Player[]>([
-    { id: "1", name: "Gabriel" },
-    { id: "2", name: "Marcos" },
-    { id: "3", name: "João" },
-    { id: "4", name: "Pedro" },
-    { id: "5", name: "Lucas" },
-    { id: "6", name: "Thiago" },
-  ])
-
-  const [tournamentPlayers, setTournamentPlayers] = useState<TournamentPlayer[]>([
-    { playerId: "1", position: 1, player: { id: "1", name: "Gabriel" } },
-    { playerId: "2", position: 2, player: { id: "2", name: "Marcos" } },
-  ])
+  const params = useParams()
+  const [players, setPlayers] = useState<Player[]>([])
+  const [tournamentPlayers, setTournamentPlayers] = useState<TournamentPlayer[]>([])
 
   const [selectPlayerOpen, setSelectPlayerOpen] = useState(false)
   const [createPlayerOpen, setCreatePlayerOpen] = useState(false)
   const [editPosition, setEditPosition] = useState<number | null>(null)
   const [createPlayerLoading, setCreatePlayerLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  // Busca os dados do torneio ao carregar a página
+  useEffect(() => {
+    async function fetchTournament() {
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/tournaments/${params.id}`)
+        if (!res.ok) throw new Error("Erro ao buscar torneio")
+        const data = await res.json()
+
+        console.log("tournamentPlayers", data.players)
+
+        setPlayers(data.players.map((tp: { player: any }) => tp.player))
+        setTournamentPlayers(
+          data.players.map((tp: any) => ({
+            playerId: tp.playerId,
+            position: tp.position,
+            player: tp.player,
+          }))
+        )
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    if (params.id) fetchTournament()
+  }, [params.id])
+
+  // Busca todos os players da base ao abrir o modal de seleção
+  async function fetchAllPlayers() {
+    try {
+      const res = await fetch("/api/players")
+      if (!res.ok) throw new Error("Falha ao carregar jogadores")
+      const data = await res.json()
+      setPlayers(data)
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  // Quando modal abrir, buscar os players atualizados
+  useEffect(() => {
+    if (selectPlayerOpen) {
+      fetchAllPlayers()
+    }
+  }, [selectPlayerOpen])
 
   const nextPosition =
-    Math.max(0, ...tournamentPlayers.map(tp => tp.position)) + 1
+    tournamentPlayers.length > 0
+      ? Math.max(...tournamentPlayers.map(tp => tp.position)) + 1
+      : 1
 
-  function handleSelectPlayer(player: Player) {
-    if (editPosition !== null) {
-      setTournamentPlayers(prev =>
-        prev.map(tp =>
-          tp.position === editPosition
-            ? { playerId: player.id, position: editPosition, player }
-            : tp
+  async function handleSelectPlayer(player: Player) {
+    try {
+      const positionToUse = editPosition !== null ? editPosition : nextPosition
+
+      const res = await fetch(`/api/tournaments/${params.id}/players`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          playerId: player.id,
+          position: positionToUse,
+        }),
+      })
+
+      if (!res.ok) throw new Error("Erro ao adicionar jogador")
+
+      const newTP = await res.json()
+
+      if (editPosition !== null) {
+        setTournamentPlayers(prev =>
+          prev.map(tp =>
+            tp.position === editPosition
+              ? { playerId: player.id, position: editPosition, player }
+              : tp
+          )
         )
-      )
-      setEditPosition(null)
-    } else {
-      setTournamentPlayers(prev => [
-        ...prev,
-        { playerId: player.id, position: nextPosition, player },
-      ])
+        setEditPosition(null)
+      } else {
+        setTournamentPlayers(prev => [
+          ...prev,
+          {
+            playerId: newTP.playerId,
+            position: newTP.position,
+            player: newTP.player,
+          },
+        ])
+      }
+
+      setSelectPlayerOpen(false)
+    } catch (error) {
+      alert("Erro ao adicionar jogador")
+      console.error(error)
     }
-    setSelectPlayerOpen(false)
   }
+
 
   function handleEditPlayer(position: number) {
     setEditPosition(position)
     setSelectPlayerOpen(true)
   }
 
-  async function handleCreatePlayer(name: string) {
-    setCreatePlayerLoading(true)
+async function handleCreatePlayer(name: string) {
+  setCreatePlayerLoading(true);
 
-    const newPlayer: Player = {
-      id: Math.random().toString(36).substring(2, 9),
-      name,
-    }
-    setPlayers(prev => [...prev, newPlayer])
+  try {
+    const res = await fetch("/api/players", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
 
-    setCreatePlayerLoading(false)
-    setCreatePlayerOpen(false)
+    if (!res.ok) throw new Error("Erro ao criar jogador");
+
+    const newPlayer: Player = await res.json();
+
+    // Atualiza lista geral de players
+    setPlayers(prev => [...prev, newPlayer]);
+
+    // Atualiza lista do torneio para adicionar o novo jogador automaticamente
+    setTournamentPlayers(prev => [
+      ...prev,
+      { playerId: newPlayer.id, position: nextPosition, player: newPlayer }
+    ]);
+
+    setCreatePlayerOpen(false);
+  } catch (error) {
+    alert("Erro ao criar jogador");
+    console.error(error);
+  } finally {
+    setCreatePlayerLoading(false);
   }
+}
+
+  if (loading) return <p>Carregando dados do torneio...</p>
 
   return (
     <div className="max-w-4xl mx-auto p-4">
@@ -93,6 +181,7 @@ export default function ManageTournamentPage() {
 
       <PlayerTable
         players={tournamentPlayers
+          .filter(tp => tp.player != null) // filter out undefined/null players
           .sort((a, b) => a.position - b.position)
           .map(tp => tp.player)}
         actionLabel="Editar"
@@ -110,7 +199,7 @@ export default function ManageTournamentPage() {
           if (!val) setEditPosition(null)
           setSelectPlayerOpen(val)
         }}
-        players={players}
+        players={players}  // <-- players sempre atualizado aqui
         tournamentPlayers={tournamentPlayers}
         editPosition={editPosition}
         onSelectPlayer={handleSelectPlayer}
